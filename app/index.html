@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang=en>
+<meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>Swiftboard · unofficial make.fun frontend</title>
+<style>*{box-sizing:border-box}body{margin:0;height:100dvh;display:grid;grid-template:48px minmax(0,1fr)/390px minmax(0,1fr);font:15px/1.45 system-ui,sans-serif;color:#10151f;background:#f3f5f8}header{grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:0 16px;background:#10151f;color:#fff}header a{color:#fff;text-decoration:none}header small{color:#b6c0d0;white-space:nowrap}header a:first-child+small{flex:1;overflow:hidden;text-overflow:ellipsis}header a:first-child{font-size:18px;font-weight:800}#board,#view{overflow:auto}#board{background:#fff;border-right:1px solid #d5dae2;padding:12px}#view{padding:18px 22px}[hidden]{display:none!important}@media(max-width:820px){body{grid-template-columns:minmax(0,1fr)}#board,[data-route=board] #view{display:none}[data-route=board] #board{display:block}#view{padding:14px}header small{font-size:11px}}</style>
+<body data-route=board>
+<header><a href=#/>Swiftboard</a><small>unofficial make.fun frontend</small><a href=https://make.fun>make.fun ↗</a></header>
+<nav id=board aria-label="Bounty board">Loading live bounties…</nav>
+<main id=view>
+<article id=bounty hidden></article>
+<section id=leaderboard hidden></section>
+<section id=profile hidden></section>
+</main>
+<script type=module>import('./app.js');import('./cached-api.js');import('./views.js')</script>
