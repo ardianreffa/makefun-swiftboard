@@ -49,7 +49,8 @@ async function route() {
   }
   if (mine !== turn) return;
   ticks = 0;
-  setText($('net'), `${requests.count} API ${requests.count === 1 ? 'request' : 'requests'} this visit`);
+  // Real counts kept by cached-api.js: network answers, answers served from the cache, and 304 revalidations.
+  setText($('net'), `${requests.count} API ${requests.count === 1 ? 'request' : 'requests'} this visit · ${requests.cached} from cache, no request · ${requests.unchanged} unchanged (304)`);
   window.__shotReady = true;
 }
 

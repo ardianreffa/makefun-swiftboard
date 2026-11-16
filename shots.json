@@ -1,5 +1,5 @@
 [
-  { "file": "1-board-and-bounty.jpg", "path": "#/bounty/makefun-frontend-01", "viewport": { "width": 1280, "height": 800 } },
+  { "file": "1-board-and-bounty.jpg", "path": "#/bounty/makefun-frontend-01", "viewport": { "width": 1280, "height": 800 }, "startAtSecond": 50, "steps": ["#/bounty/tiny-chess-01", { "untilSecond": 1 }, "#/bounty/makefun-frontend-01", { "sleep": 66000 }] },
   { "file": "2-leaderboard.jpg", "path": "#/bounty/tiny-chess-01/leaderboard", "viewport": { "width": 1280, "height": 800 } },
-  { "file": "3-profile-phone.jpg", "path": "#/u/nightshift-labs", "viewport": { "width": 390, "height": 844 } }
+  { "file": "3-profile-phone.jpg", "path": "#/u/icantcodefyi", "viewport": { "width": 390, "height": 844 } }
 ]

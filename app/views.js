@@ -42,6 +42,7 @@ export function patchHtml(el, html) {
 /** Tick every countdown on the page from its deadline; no request is made. */
 export function patchCountdowns() {
   for (const el of document.querySelectorAll('[data-until]')) setText(el, timeLeft(el.dataset.until, el.dataset.exact));
+  for (const el of document.querySelectorAll('[data-next]')) setText(el, closesIn(el.dataset.next));
   if (listed.length && listed.filter(isLive).length !== liveCount) {
     paintBoard(listed);
     const shown = $('bounty')._bounty;
@@ -181,22 +182,41 @@ function paintBoard(list) {
   listed = list;
   const root = $('board');
   if (!root._list) {
-    root.innerHTML = '<div class=bar><b></b><button data-sort=soon>Soonest</button><button data-sort=pot>Pot</button><button data-sort=entries>Entries</button></div><div></div>';
-    root._list = root.lastChild;
+    root.innerHTML = BOARD;
+    [root._top, root._list, root._none] = root.children;
+    [root._bar, root._find, root._cats, root._tally] = root._top.children;
+    // Sorting and filtering read the list already in memory: no request is made and the rows stay in the DOM.
     root.addEventListener('click', (event) => {
-      const by = event.target.dataset.sort;
-      if (by) (sortBy = by), paintBoard(listed);
+      const { sort, cat, clear } = event.target.dataset;
+      if (sort) sortBy = sort;
+      else if (cat !== undefined) category = cat;
+      else if (clear !== undefined) category = findText = root._find.value = '';
+      else return;
+      paintBoard(listed);
+    });
+    root._find.addEventListener('input', () => {
+      findText = root._find.value.trim().toLowerCase();
+      paintBoard(listed);
     });
   }
   const live = list.filter(isLive).sort(SORTS[sortBy]);
   const over = list.filter((b) => !isLive(b)).sort((a, b) => Date.parse(b.deadline) - Date.parse(a.deadline));
   liveCount = live.length;
   order = live.concat(over);
-  const bar = root.firstChild;
-  setText(bar.firstChild, `Live bounties · ${live.length}`);
-  for (const button of bar.querySelectorAll('button')) button.setAttribute('aria-pressed', button.dataset.sort === sortBy);
-  const rows = over.length ? [...live, { group: `Entries closed, awaiting results · ${over.length}` }, ...over] : live;
+  // The category buttons are the categories the live data holds, most bounties first, after "All".
+  const tally = new Map();
+  for (const b of list) if (b.category) tally.set(b.category, (tally.get(b.category) || 0) + 1);
+  if (category && !tally.has(category)) category = '';
+  const categories = [...tally.keys()].sort((a, b) => tally.get(b) - tally.get(a) || (a < b ? -1 : 1));
+  patchList(root._cats, ['', ...categories], (c) => c || '#all', makeCategory, patchCategory);
+  const liveShown = live.filter(matchesFilter);
+  const overShown = over.filter(matchesFilter);
+  setText(root._bar.firstChild, `Live bounties · ${live.length}`);
+  for (const button of root._bar.querySelectorAll('button')) button.setAttribute('aria-pressed', button.dataset.sort === sortBy);
+  paintTally(root._tally, liveShown, live.length);
+  const rows = over.length ? [...live, { group: `Entries closed, awaiting results · ${overShown.length}`, none: !overShown.length }, ...over] : live;
   patchList(root._list, rows, (b) => b.slug || '#over', makeRow, patchRow);
+  root._none.hidden = liveShown.length + overShown.length > 0 || !list.length;
 }
 
 function makeRow(b) {
@@ -206,15 +226,24 @@ function makeRow(b) {
 }
 
 function patchRow(el, b) {
+  // A row the filter leaves out is hidden where it stands, not removed, so clearing the filter makes nothing.
+  const hide = b.group ? b.none : !matchesFilter(b);
+  if (el.hidden !== hide) el.hidden = hide;
   if (b.group) return setText(el, b.group);
   const state = 'row' + (isLive(b) ? '' : ' over') + (b.slug === selected ? ' on' : '');
   if (el.className !== state) {
     el.className = state;
     el.href = '#/bounty/' + b.slug;
-    if (b.slug === selected) el.scrollIntoView({ block: 'nearest' });
+    if (b.slug === selected && !hide) el.scrollIntoView({ block: 'nearest' });
   }
   const [title, pot, meta, caption] = el.children;
   const [left, entries, fee] = meta.children;
+  // Closing soon: under 24 hours left. Marked by a boxed "!" as well as by colour.
+  const soon = closesSoon(b) ? 'soon' : '';
+  if (left.className !== soon) {
+    left.className = soon;
+    left.title = soon ? 'Closes within 24 hours' : '';
+  }
   setText(title, b.title);
   setText(pot, usd(b.pot));
   setText(caption, +b.fees ? 'live pot' : 'reward');
@@ -328,10 +357,10 @@ function datesList(b) {
 document.head.append(
   Object.assign(document.createElement('style'), {
     textContent: `a{color:#0b57d0}h1{font-size:25px;line-height:1.2;margin:6px 0 4px}h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#566074;margin:18px 0 8px}
-#board .bar{display:flex;align-items:center;gap:5px;padding:0 4px 8px}.bar b{flex:1;font-size:16px}
+#board .bar{display:flex;align-items:center;gap:5px;padding:0 4px 6px}.bar b{flex:1;font-size:16px}
 button{font:inherit;font-size:12px;padding:3px 10px;border:1px solid #c5ccd8;border-radius:99px;background:#fff;color:#10151f;cursor:pointer}button[aria-pressed=true]{background:#10151f;border-color:#10151f;color:#fff}
 #board h2{margin:14px 6px 4px}
-.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1px 12px;padding:8px 10px;border:1px solid transparent;border-radius:9px;color:inherit;text-decoration:none}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1px 12px;padding:5px 10px;border:1px solid transparent;border-radius:9px;color:inherit;text-decoration:none}
 .row:hover{background:#f3f5f8}.row.on{background:#e8f0fe;border-color:#0b57d0}
 .row .t{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pot,.stat b,td,.num{font-variant-numeric:tabular-nums}
@@ -356,6 +385,63 @@ dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:0;p
 details{margin:14px 0 30px}summary{padding:8px 2px;font-weight:650;cursor:pointer}
 .av{position:relative;display:inline-grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%;background:#d5dae2;color:#39425a;font-size:13px;font-weight:700;overflow:hidden}.av i{font-style:normal}.av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 #notice{padding:14px;background:#fff;border:1px solid #d5dae2;border-radius:10px}
+.top{position:sticky;top:-12px;z-index:1;margin-top:-12px;padding-top:12px;background:#fff}.row{scroll-margin-top:150px}
+#board input{display:block;width:100%;font:inherit;font-size:13.5px;padding:3px 10px;border:1px solid #c5ccd8;border-radius:8px;background:#fff;color:#10151f}
+.cats{display:flex;flex-wrap:wrap;gap:4px;margin:5px 0 0}.cats button{padding:1px 7px}
+.tally{margin:5px 2px 0;font-size:12px;color:#465064;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tally b{color:#10151f}.tally b:nth-of-type(2){color:#08692f}
+.heads{display:flex;align-items:center;gap:8px;margin:5px 0 2px;padding:3px 10px;border-block:1px solid #e4e8ee;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#566074;white-space:nowrap}.heads span:first-child{flex:1}
+.soon{padding:0 6px 0 2px;border:1px solid #c98a1b;border-radius:99px;background:#fdebc5;color:#5f3900}.meta b.soon{color:#5f3900}
+.soon:before{content:"!";display:inline-block;width:13px;margin-right:4px;border-radius:50%;background:#774800;color:#fff;font-size:10.5px;font-weight:800;line-height:13px;text-align:center;vertical-align:1px}
+.none{margin:14px 6px;color:#465064}
 @media(max-width:820px){#net{display:none}.back{display:inline-block}.stats{grid-template-columns:1fr 1fr}.cols{grid-template-columns:minmax(0,1fr)}h1{font-size:21px}.stat b{font-size:20px}th,td{padding:5px 8px}}`,
   }),
 );
+
+// ---------------------------------------------------------------- the board's filter, summary and headings
+
+let findText = '';
+let category = '';
+const SOON_MS = 24 * 3600 * 1000;
+
+/** The board's frame, made once: sort chips, filter box, category buttons, summary line, column headings, list. */
+const BOARD =
+  '<div class=top><div class=bar><b></b><button data-sort=soon>Soonest</button><button data-sort=pot>Pot</button><button data-sort=entries>Entries</button></div>' +
+  '<input type=search placeholder="Filter bounties by title or category" aria-label="Filter bounties by title or category">' +
+  '<div class=cats role=group aria-label="Filter by category"></div>' +
+  '<p class=tally><b></b> open · <b></b> in pots · <b></b> entries · <span title="The nearest deadline among the bounties shown">next ends in <b data-next></b></span></p>' +
+  '<div class=heads><span>Bounty · time left · entries · fee</span><span class=soon>under 24h</span><span>Pot</span></div></div>' +
+  '<div></div>' +
+  '<p class=none hidden>No bounty matches this filter. <button data-clear>Show all</button></p>';
+
+/** The filter, run over the listings in memory: the chosen category, and the typed text in the title or category. */
+function matchesFilter(b) {
+  return (!category || b.category === category) && (!findText || `${b.title} ${b.category}`.toLowerCase().includes(findText));
+}
+
+const closesSoon = (b) => isLive(b) && Date.parse(b.deadline) - Date.now() < SOON_MS;
+
+/** A deadline as '8h 42m', for the summary line's nearest deadline. */
+const closesIn = (iso) => (Date.parse(iso) > Date.now() ? timeLeft(iso).replace(' left', '') : '–');
+
+/** One line above the list: bounties taking entries, the total of their live pots, their entries, the nearest deadline. */
+function paintTally(el, live, total) {
+  const [count, pots, entries, next] = el.querySelectorAll('b');
+  const nearest = live.reduce((min, b) => (!min || Date.parse(b.deadline) < Date.parse(min) ? b.deadline : min), '');
+  setText(count, live.length === total ? num(total) : `${num(live.length)} of ${num(total)}`);
+  setText(pots, usd(live.reduce((sum, b) => sum + (+b.pot || 0), 0)));
+  setText(entries, num(live.reduce((sum, b) => sum + (+b.entries || 0), 0)));
+  next.dataset.next = nearest;
+  setText(next, closesIn(nearest));
+}
+
+function makeCategory(name) {
+  const el = document.createElement('button');
+  el.dataset.cat = name;
+  el.textContent = name || 'All';
+  return el;
+}
+
+function patchCategory(el, name) {
+  const pressed = String(name === category);
+  if (el.getAttribute('aria-pressed') !== pressed) el.setAttribute('aria-pressed', pressed);
+}

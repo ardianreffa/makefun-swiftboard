@@ -10,7 +10,11 @@ export const API = 'https://make.fun/api';
 export async function cachedGet(path, patch, slim, signal = stale.signal) {
   const hit = etagCache.get(path) || restore(path);
   if (hit) patch(hit.data);
-  if (hit && sameMinute(hit.at)) return hit.data;
+  if (hit && sameMinute(hit.at)) {
+    // Answered from the cache with no request: counted, and shown in the header beside the request count.
+    requests.cached += 1;
+    return hit.data;
+  }
   try {
     const fresh = await revalidateEtag(path, hit, slim, signal);
     if (fresh !== hit) patch(fresh.data);
@@ -21,16 +25,26 @@ export async function cachedGet(path, patch, slim, signal = stale.signal) {
   }
 }
 
-/** One conditional request a path: If-None-Match with the stored ETag, and a 304 keeps the copy. Callers share it. */
+/**
+ * One conditional request a path, shared by its callers. `cache: 'no-cache'` has the browser send If-None-Match
+ * with the ETag it stored, with no preflight; make.fun's 304 carries no CORS header, so a script could not read
+ * one it asked for itself. An answer bearing the ETag already held is the 304 case: the copy is kept as it is
+ * and the body is neither parsed nor painted again.
+ */
 function revalidateEtag(path, hit, slim, signal) {
   const shared = inflight.get(path);
   if (shared && !(shared.signal && shared.signal.aborted)) return shared.job;
-  const job = fetch(API + path, { signal: signal || undefined, headers: hit && hit.etag ? { 'If-None-Match': hit.etag } : {} })
+  const job = fetch(API + path, { signal: signal || undefined, cache: 'no-cache' })
     .then(async (res) => {
       requests.count += 1;
-      if (res.status === 304) return remember(path, hit, true);
       if (!res.ok) throw new Error(res.status === 404 ? 'make.fun has nothing at this address' : `make.fun answered ${res.status}`);
-      return remember(path, { etag: res.headers.get('ETag'), data: slim(await res.json()) });
+      const etag = res.headers.get('ETag');
+      if (hit && etag && etag === hit.etag) {
+        // Revalidated and unchanged: counted, and shown in the header.
+        requests.unchanged += 1;
+        return remember(path, hit, true);
+      }
+      return remember(path, { etag, data: slim(await res.json()) });
     })
     .finally(() => inflight.get(path)?.job === job && inflight.delete(path));
   inflight.set(path, { job, signal });
@@ -158,3 +172,8 @@ function slimProfile(p) {
     payouts: (p.payouts || []).map((x) => ({ at: x.paid_at, usd: x.amount_usd, place: x.place, slug: x.competition.slug, bounty: x.competition.title, tx: x.explorer_url })),
   };
 }
+
+// Two more counts beside `requests.count`, kept by cachedGet and revalidateEtag above: answers served from the
+// cache with no request, and revalidations that came back 304 with nothing new.
+requests.cached = 0;
+requests.unchanged = 0;

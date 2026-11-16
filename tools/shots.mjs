@@ -20,6 +20,8 @@ const chromePath = process.env.CHROME || '/Applications/Google Chrome.app/Conten
 // --shots <file> reads another list (same shape as shots.json), for looking at routes that are not handed in.
 const shots = JSON.parse(readFileSync(option('--shots', join(repo, 'shots.json')), 'utf8'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+/** Wait until the wall clock next reads the given second of the minute. */
+const untilSecond = (second) => sleep(((second * 1000 - (Date.now() % 60000) + 60000) % 60000) || 1);
 
 const server = spawn(process.execPath, [join(repo, 'serve.ts'), '--port', String(port)], { stdio: 'ignore' });
 const chrome = spawn(chromePath, ['--headless=new', `--remote-debugging-port=${debugPort}`, `--user-data-dir=${mkdtempSync(join(tmpdir(), 'swiftboard-'))}`, '--no-first-run', '--hide-scrollbars', 'about:blank'], { stdio: 'ignore' });
@@ -62,13 +64,34 @@ try {
     const { width, height } = shot.viewport;
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 600 });
     await send('Page.navigate', { url: 'about:blank' });
+    if (shot.startAtSecond != null) await untilSecond(shot.startAtSecond);
     await send('Page.navigate', { url: `http://localhost:${port}/${shot.path}` });
-    let ready = false;
-    for (let i = 0; i < 300 && !ready; i++) {
-      await sleep(100);
-      ready = (await evaluate('window.__shotReady === true')) === true;
+    const settle = async (what) => {
+      let ready = false;
+      for (let i = 0; i < 300 && !ready; i++) {
+        await sleep(100);
+        ready = (await evaluate('window.__shotReady === true')) === true;
+      }
+      if (!ready) throw new Error(`${shot.file}: ${what} never became ready`);
+    };
+    await settle('the route');
+    // Optional real use of the app before the capture, in the same page: a string is a hash route to go to by
+    // its link's address, as a click would; { "untilSecond": n } waits for the clock to reach that second of
+    // the minute (the app revalidates its cache only once the minute has turned); { "sleep": ms } leaves the
+    // tab open, which lets the app's own once-a-minute revalidation run. Nothing is injected: the header's
+    // request and cache counts are whatever these visits really cost.
+    for (const step of shot.steps || []) {
+      if (typeof step === 'string') {
+        await evaluate(`window.__shotReady = false; location.hash = ${JSON.stringify(step)}`);
+        await settle(step);
+        await sleep(300);
+      } else if (step.untilSecond != null) await untilSecond(step.untilSecond);
+      else if (step.sleep) {
+        await sleep(step.sleep);
+        await settle('the open tab');
+      }
     }
-    if (!ready) throw new Error(`${shot.file}: the route never became ready`);
+    if (shot.steps) console.log(`${shot.file}: header ->`, await evaluate("document.getElementById('net').textContent"));
     // An optional expression to run in the page first (scroll a list, read a counter); its value is printed.
     if (shot.run) console.log(`${shot.file}: run ->`, JSON.stringify(await evaluate(shot.run)));
     // Let avatars and the last frame land before the capture.
