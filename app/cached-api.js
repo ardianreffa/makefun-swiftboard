@@ -13,6 +13,7 @@ export async function cachedGet(path, patch, slim, signal = stale.signal) {
   if (hit && sameMinute(hit.at)) {
     // Answered from the cache with no request: counted, and shown in the header beside the request count.
     requests.cached += 1;
+    requests.view.cached += 1;
     return hit.data;
   }
   try {
@@ -37,11 +38,13 @@ function revalidateEtag(path, hit, slim, signal) {
   const job = fetch(API + path, { signal: signal || undefined, cache: 'no-cache' })
     .then(async (res) => {
       requests.count += 1;
+      requests.view.count += 1;
       if (!res.ok) throw new Error(res.status === 404 ? 'make.fun has nothing at this address' : `make.fun answered ${res.status}`);
       const etag = res.headers.get('ETag');
       if (hit && etag && etag === hit.etag) {
         // Revalidated and unchanged: counted, and shown in the header.
         requests.unchanged += 1;
+        requests.view.unchanged += 1;
         return remember(path, hit, true);
       }
       return remember(path, { etag, data: slim(await res.json()) });
@@ -55,6 +58,8 @@ function revalidateEtag(path, hit, slim, signal) {
 export function abortStale() {
   stale.abort();
   stale = new AbortController();
+  // A new address is a new view: its counts start again. A revalidation of the same address keeps adding to them.
+  if (requests.view.of !== location.hash) requests.view = { of: location.hash, count: 0, cached: 0, unchanged: 0 };
 }
 
 export const getBoard = (patch) => cachedGet('/competitions?status=open&activity=times', patch, slimBoard, null);
@@ -177,3 +182,7 @@ function slimProfile(p) {
 // cache with no request, and revalidations that came back 304 with nothing new.
 requests.cached = 0;
 requests.unchanged = 0;
+
+// The same three counts for the view now on screen alone, shown in the header. cachedGet and revalidateEtag add
+// to them as they answer; abortStale starts them again when the address changes.
+requests.view = { of: null, count: 0, cached: 0, unchanged: 0 };

@@ -238,11 +238,11 @@ function patchRow(el, b) {
   }
   const [title, pot, meta, caption] = el.children;
   const [left, entries, fee] = meta.children;
-  // Closing soon: under 24 hours left. Marked by a boxed "!" as well as by colour.
+  // Closing soon: under 6 hours left. Marked by a boxed "!" as well as by colour.
   const soon = closesSoon(b) ? 'soon' : '';
   if (left.className !== soon) {
     left.className = soon;
-    left.title = soon ? 'Closes within 24 hours' : '';
+    left.title = soon ? 'Closes within 6 hours' : '';
   }
   setText(title, b.title);
   setText(pot, usd(b.pot));
@@ -269,6 +269,7 @@ const STAT = (key) => `<div class="stat ${key}"><small data-f=${key}Label></smal
 const BOUNTY = `<div data-f=head></div>
 <p class=lede data-f=summary></p>
 <div class=stats>${['pot', 'fee', 'left', 'entries'].map(STAT).join('')}</div>
+<h2 class=toph data-f=topHead></h2><div data-f=top></div>
 <div class=cols><section><h2>Rewards</h2><table data-f=rewards></table></section><section><h2>Dates and status</h2><dl data-f=dates></dl></section></div>
 <h2>Description</h2><div class=md data-f=about></div>
 <details data-f=rulesBox><summary>Rules</summary><div class=md data-f=rules></div></details>`;
@@ -290,9 +291,11 @@ export function bountyView(slug = order[0] && order[0].slug) {
     root._f.rulesBox.open = false;
     $('view').scrollTop = 0;
     paintBounty(listing(slug) || { slug, title: slug, rewards: [], entries: 0 });
+    paintTopFive(slug);
   }
   if (selected !== slug) boardView(slug);
-  return getBounty(slug, (b) => root._slug === slug && paintBounty(b));
+  // Two answers make the page: the bounty's own, and its leaderboard for the Top 5 (the leaderboard tab's request).
+  return Promise.all([getBounty(slug, (b) => root._slug === slug && paintBounty(b)), topFive(slug)]);
 }
 
 function paintBounty(b) {
@@ -393,7 +396,11 @@ details{margin:14px 0 30px}summary{padding:8px 2px;font-weight:650;cursor:pointe
 .soon{padding:0 6px 0 2px;border:1px solid #c98a1b;border-radius:99px;background:#fdebc5;color:#5f3900}.meta b.soon{color:#5f3900}
 .soon:before{content:"!";display:inline-block;width:13px;margin-right:4px;border-radius:50%;background:#774800;color:#fff;font-size:10.5px;font-weight:800;line-height:13px;text-align:center;vertical-align:1px}
 .none{margin:14px 6px;color:#465064}
-@media(max-width:820px){#net{display:none}.back{display:inline-block}.stats{grid-template-columns:1fr 1fr}.cols{grid-template-columns:minmax(0,1fr)}h1{font-size:21px}.stat b{font-size:20px}th,td{padding:5px 8px}}`,
+.toph a{float:right;font-size:13px;font-weight:600;letter-spacing:0;text-transform:none}
+.top5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0;padding:0;list-style:none}.top5+p{min-height:63px;margin:0;color:#465064}
+.top5 li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 7px;align-items:baseline;padding:7px 12px;background:#fff;border:1px solid #d5dae2;border-radius:10px}
+.top5 i{font-style:normal;font-size:13px;font-weight:700;color:#566074}.top5 a{font-weight:650;color:#10151f;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.top5 a:hover{text-decoration:underline}.top5 b{grid-column:2;font-size:17px}
+@media(max-width:820px){body{grid-template-rows:auto minmax(0,1fr)}header{flex-wrap:wrap;row-gap:0;padding-block:6px}#net{flex-basis:100%;overflow:hidden;text-overflow:ellipsis;font-size:10.5px}.top5{grid-template-columns:minmax(0,1fr);gap:4px}.top5 li{grid-template-columns:30px minmax(0,1fr) auto;padding:5px 12px}.top5 b{grid-column:auto}.toph a{font-size:12px}.back{display:inline-block}.stats{grid-template-columns:1fr 1fr}.cols{grid-template-columns:minmax(0,1fr)}h1{font-size:21px}.stat b{font-size:20px}th,td{padding:5px 8px}}`,
   }),
 );
 
@@ -401,7 +408,7 @@ details{margin:14px 0 30px}summary{padding:8px 2px;font-weight:650;cursor:pointe
 
 let findText = '';
 let category = '';
-const SOON_MS = 24 * 3600 * 1000;
+const SOON_MS = 6 * 3600 * 1000;
 
 /** The board's frame, made once: sort chips, filter box, category buttons, summary line, column headings, list. */
 const BOARD =
@@ -409,7 +416,7 @@ const BOARD =
   '<input type=search placeholder="Filter bounties by title or category" aria-label="Filter bounties by title or category">' +
   '<div class=cats role=group aria-label="Filter by category"></div>' +
   '<p class=tally><b></b> open · <b></b> in pots · <b></b> entries · <span title="The nearest deadline among the bounties shown">next ends in <b data-next></b></span></p>' +
-  '<div class=heads><span>Bounty · time left · entries · fee</span><span class=soon>under 24h</span><span>Pot</span></div></div>' +
+  '<div class=heads><span>Bounty · time left · entries · fee</span><span class=soon>under 6h</span><span>Pot</span></div></div>' +
   '<div></div>' +
   '<p class=none hidden>No bounty matches this filter. <button data-clear>Show all</button></p>';
 
@@ -444,4 +451,32 @@ function makeCategory(name) {
 function patchCategory(el, name) {
   const pressed = String(name === category);
   if (el.getAttribute('aria-pressed') !== pressed) el.setAttribute('aria-pressed', pressed);
+}
+
+// ---------------------------------------------------------------- a bounty's Top 5
+
+import { getLeaderboard } from './cached-api.js';
+
+/**
+ * The bounty's current top five, read through cachedGet from the very request its leaderboard tab makes, so the
+ * two share one cached answer: opening the tab afterwards costs no request, and coming back costs none either.
+ * It is aborted with the view; a bounty with no leaderboard to read shows the plain line, not an error.
+ */
+function topFive(slug) {
+  const mine = (board) => $('bounty')._slug === slug && paintTopFive(slug, board || { rows: [] });
+  return getLeaderboard(slug, '', mine).catch((err) => err.name === 'AbortError' || mine());
+}
+
+/** Rank, handle and the leaderboard's own score text for the first five ranked rows; patched only when changed. */
+function paintTopFive(slug, board) {
+  const f = $('bounty')._f;
+  const at = `#/bounty/${encodeURIComponent(slug)}/leaderboard`;
+  const ranked = board ? board.rows.filter((r) => r[0] != null) : [];
+  const cells = ranked.slice(0, 5).map(
+    ([rank, handle, , score, , , house]) =>
+      `<li><i>${ordinal(rank)}</i><a href="#/u/${encodeURIComponent(handle)}" title="@${esc(handle)}">@${esc(handle)}${house ? ' · house' : ''}</a><b class=num>${esc(score)}</b></li>`,
+  );
+  const all = ranked.length ? `All ${plural(ranked.length, 'ranked entry', 'ranked entries')}` : 'Full leaderboard';
+  patchHtml(f.topHead, `Top 5 now${ranked.length ? ' · ' + esc(board.column) : ''} <a href="${at}">${all} →</a>`);
+  patchHtml(f.top, cells.length ? `<ol class=top5>${cells.join('')}</ol>` : `<ol class=top5></ol><p>${board ? 'No ranked entries yet.' : 'Reading the leaderboard…'}</p>`);
 }
