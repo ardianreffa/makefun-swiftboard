@@ -59,7 +59,10 @@ async function route() {
 /** Countdowns tick every second without a request; the data is revalidated once a minute while the tab shows. */
 function tickCountdowns() {
   patchCountdowns();
-  if (++ticks >= 60 && !document.hidden) route();
+  if (++ticks < 60 || document.hidden) return;
+  // Counted from the start of the revalidation, so one slower than a second is not started (and aborted) again.
+  ticks = 0;
+  route();
 }
 
 let turn = 0, ticks = 0;

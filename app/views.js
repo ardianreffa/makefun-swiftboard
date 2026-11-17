@@ -179,6 +179,8 @@ export function boardView(slug) {
 }
 
 function paintBoard(list) {
+  // A bounty's row and its page show one reading of its numbers: the later of the board's and the bounty's own.
+  list.forEach(keepLaterNumbers);
   listed = list;
   const root = $('board');
   if (!root._list) {
@@ -295,7 +297,7 @@ export function bountyView(slug = order[0] && order[0].slug) {
   }
   if (selected !== slug) boardView(slug);
   // Two answers make the page: the bounty's own, and its leaderboard for the Top 5 (the leaderboard tab's request).
-  return Promise.all([getBounty(slug, (b) => root._slug === slug && paintBounty(b)), topFive(slug)]);
+  return Promise.all([getBounty(slug, (b) => root._slug === slug && paintBounty(withLaterNumbers(b))), topFive(slug)]);
 }
 
 function paintBounty(b) {
@@ -391,16 +393,16 @@ details{margin:14px 0 30px}summary{padding:8px 2px;font-weight:650;cursor:pointe
 .top{position:sticky;top:-12px;z-index:1;margin-top:-12px;padding-top:12px;background:#fff}.row{scroll-margin-top:150px}
 #board input{display:block;width:100%;font:inherit;font-size:13.5px;padding:3px 10px;border:1px solid #c5ccd8;border-radius:8px;background:#fff;color:#10151f}
 .cats{display:flex;flex-wrap:wrap;gap:4px;margin:5px 0 0}.cats button{padding:1px 7px}
-.tally{margin:5px 2px 0;font-size:12px;color:#465064;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tally b{color:#10151f}.tally b:nth-of-type(2){color:#08692f}
+.tally{margin:5px 2px 0;font-size:11.5px;color:#465064;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tally b{color:#10151f}.tally b:nth-of-type(2){color:#08692f}
 .heads{display:flex;align-items:center;gap:8px;margin:5px 0 2px;padding:3px 10px;border-block:1px solid #e4e8ee;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#566074;white-space:nowrap}.heads span:first-child{flex:1}
 .soon{padding:0 6px 0 2px;border:1px solid #c98a1b;border-radius:99px;background:#fdebc5;color:#5f3900}.meta b.soon{color:#5f3900}
 .soon:before{content:"!";display:inline-block;width:13px;margin-right:4px;border-radius:50%;background:#774800;color:#fff;font-size:10.5px;font-weight:800;line-height:13px;text-align:center;vertical-align:1px}
 .none{margin:14px 6px;color:#465064}
 .toph a{float:right;font-size:13px;font-weight:600;letter-spacing:0;text-transform:none}
 .top5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0;padding:0;list-style:none}.top5+p{min-height:63px;margin:0;color:#465064}
-.top5 li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 7px;align-items:baseline;padding:7px 12px;background:#fff;border:1px solid #d5dae2;border-radius:10px}
-.top5 i{font-style:normal;font-size:13px;font-weight:700;color:#566074}.top5 a{font-weight:650;color:#10151f;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.top5 a:hover{text-decoration:underline}.top5 b{grid-column:2;font-size:17px}
-@media(max-width:820px){body{grid-template-rows:auto minmax(0,1fr)}header{flex-wrap:wrap;row-gap:0;padding-block:6px}#net{flex-basis:100%;overflow:hidden;text-overflow:ellipsis;font-size:10.5px}.top5{grid-template-columns:minmax(0,1fr);gap:4px}.top5 li{grid-template-columns:30px minmax(0,1fr) auto;padding:5px 12px}.top5 b{grid-column:auto}.toph a{font-size:12px}.back{display:inline-block}.stats{grid-template-columns:1fr 1fr}.cols{grid-template-columns:minmax(0,1fr)}h1{font-size:21px}.stat b{font-size:20px}th,td{padding:5px 8px}}`,
+.top5 li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 7px;align-items:baseline;padding:7px 8px 7px 9px;background:#fff;border:1px solid #d5dae2;border-radius:10px}
+.top5 i{grid-area:2/1;font-style:normal;font-size:13px;font-weight:700;color:#566074}.top5 a{grid-area:1/1/2/3;font-size:13px;line-height:22px;font-weight:650;color:#10151f;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.top5 a:hover{text-decoration:underline}.top5 .long{font-size:11.5px;letter-spacing:-.25px}.top5 b{grid-area:2/2;font-size:17px}
+@media(max-width:820px){body{grid-template-rows:auto minmax(0,1fr)}header{flex-wrap:wrap;row-gap:0;padding-block:6px}#net{flex-basis:100%;overflow:hidden;text-overflow:ellipsis;font-size:10.5px}.top5{grid-template-columns:minmax(0,1fr);gap:4px}.top5 li{grid-template-columns:30px minmax(0,1fr) auto;padding:5px 12px}.top5 i,.top5 a,.top5 b{grid-area:auto}.top5 a,.top5 .long{font-size:15px;letter-spacing:0}.toph a{font-size:12px}.back{display:inline-block}.stats{grid-template-columns:1fr 1fr}.cols{grid-template-columns:minmax(0,1fr)}h1{font-size:21px}.stat b{font-size:20px}th,td{padding:5px 8px}}`,
   }),
 );
 
@@ -415,7 +417,7 @@ const BOARD =
   '<div class=top><div class=bar><b></b><button data-sort=soon>Soonest</button><button data-sort=pot>Pot</button><button data-sort=entries>Entries</button></div>' +
   '<input type=search placeholder="Filter bounties by title or category" aria-label="Filter bounties by title or category">' +
   '<div class=cats role=group aria-label="Filter by category"></div>' +
-  '<p class=tally><b></b> open · <b></b> in pots · <b></b> entries · <span title="The nearest deadline among the bounties shown">next ends in <b data-next></b></span></p>' +
+  '<p class=tally><b></b> open · <b></b> in pots · <b></b> entries · <span title="The nearest deadline among the bounties shown">next in <b data-next></b></span></p>' +
   '<div class=heads><span>Bounty · time left · entries · fee</span><span class=soon>under 6h</span><span>Pot</span></div></div>' +
   '<div></div>' +
   '<p class=none hidden>No bounty matches this filter. <button data-clear>Show all</button></p>';
@@ -474,9 +476,53 @@ function paintTopFive(slug, board) {
   const ranked = board ? board.rows.filter((r) => r[0] != null) : [];
   const cells = ranked.slice(0, 5).map(
     ([rank, handle, , score, , , house]) =>
-      `<li><i>${ordinal(rank)}</i><a href="#/u/${encodeURIComponent(handle)}" title="@${esc(handle)}">@${esc(handle)}${house ? ' · house' : ''}</a><b class=num>${esc(score)}</b></li>`,
+      // The handle has the card's full width; one longer than 16 characters is set a little smaller so that it
+      // still reads in full, and only a truly long one is cut with an ellipsis (the title always has all of it).
+      `<li><i>${ordinal(rank)}</i><a href="#/u/${encodeURIComponent(handle)}" title="@${esc(handle)}"${String(handle).length + (house ? 8 : 0) > 16 ? ' class=long' : ''}>@${esc(handle)}${house ? ' · house' : ''}</a><b class=num>${esc(score)}</b></li>`,
   );
   const all = ranked.length ? `All ${plural(ranked.length, 'ranked entry', 'ranked entries')}` : 'Full leaderboard';
   patchHtml(f.topHead, `Top 5 now${ranked.length ? ' · ' + esc(board.column) : ''} <a href="${at}">${all} →</a>`);
   patchHtml(f.top, cells.length ? `<ol class=top5>${cells.join('')}</ol>` : `<ol class=top5></ol><p>${board ? 'No ranked entries yet.' : 'Reading the leaderboard…'}</p>`);
+}
+
+// ---------------------------------------------------------------- one reading of a bounty's numbers
+
+/**
+ * The board's list and a bounty's own answer are two endpoints of different freshness, and both state these same
+ * fields (submissionCount, potUsd, rewardAmount, entryFeesUsd, entryFeePayers, rewardsNow). They move as one group,
+ * so the pot always equals its reward plus its fees and the rewards table always adds up to the pot.
+ */
+const SHARED_NUMBERS = ['entries', 'pot', 'reward', 'fees', 'payers', 'rewards'];
+const sharedNumbers = (b) => Object.fromEntries(SHARED_NUMBERS.map((key) => [key, b[key]]));
+
+/** The numbers last read from each bounty's own answer, by slug. Real answers only: nothing is computed. */
+const ownNumbers = new Map();
+
+/** A bounty's entries and its fee total only grow, so the reading with more of them is the later of the two. */
+const isLater = (a, b) => (a.entries - b.entries || a.fees - b.fees) > 0;
+
+/**
+ * The bounty's own answer, about to be painted on its page. While it is the later reading, its numbers are written
+ * into the listing the board row is painted from and the row and summary line are patched in place (no request, no
+ * new row). If the board's list is the later one, the page takes the list's numbers instead.
+ */
+function withLaterNumbers(b) {
+  const row = listing(b.slug);
+  if (row && isLater(row, b)) return { ...b, ...sharedNumbers(row) };
+  ownNumbers.set(b.slug, sharedNumbers(b));
+  if (row && SHARED_NUMBERS.some((key) => String(row[key]) !== String(b[key]))) paintBoard(listed);
+  return b;
+}
+
+/**
+ * A listing about to be painted on the board. An older board answer does not overwrite the bounty's own numbers;
+ * a later one replaces them, on the bounty's page too when that page is on screen.
+ */
+function keepLaterNumbers(row) {
+  const own = ownNumbers.get(row.slug);
+  if (!own) return;
+  if (!isLater(row, own)) return Object.assign(row, own);
+  ownNumbers.delete(row.slug);
+  const page = $('bounty');
+  if (!page.hidden && page._bounty && page._bounty !== row && page._bounty.slug === row.slug) paintBounty({ ...page._bounty, ...sharedNumbers(row) });
 }
