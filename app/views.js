@@ -43,6 +43,9 @@ export function patchHtml(el, html) {
 export function patchCountdowns() {
   for (const el of document.querySelectorAll('[data-until]')) setText(el, timeLeft(el.dataset.until, el.dataset.exact));
   for (const el of document.querySelectorAll('[data-next]')) setText(el, closesIn(el.dataset.next));
+  // The phase line moves with the clock: the dates box is written again only when its markup has changed.
+  const page = $('bounty');
+  if (page._bounty && !page.hidden) patchHtml(page._f.dates, datesList(page._bounty));
   if (listed.length && listed.filter(isLive).length !== liveCount) {
     paintBoard(listed);
     const shown = $('bounty')._bounty;
@@ -340,8 +343,11 @@ function rewardsTable(b) {
     if (last && last.base === +base && last.now === +now) last.to = place;
     else groups.push({ from: place, to: place, base: +base, share: +share, now: +now });
   }
+  // Under each amount, a thin bar as long as that place's payout is of the first place's.
+  const first = groups[0] && groups[0].now;
+  const bar = (g) => (first > 0 ? `<u style="width:${Math.min(100, (g.now / first) * 100).toFixed(1)}%"></u>` : '');
   const rows = groups.map(
-    (g) => `<tr><td>${ordinal(g.from)}${g.to > g.from ? ' – ' + ordinal(g.to) : ''}</td><td>${usd(g.base)}</td><td>${g.share ? '+' + usd(g.share) : '–'}</td><td><b>${usd(g.now)}</b>${g.to > g.from ? ' each' : ''}</td></tr>`,
+    (g) => `<tr><td>${ordinal(g.from)}${g.to > g.from ? ' – ' + ordinal(g.to) : ''}</td><td>${usd(g.base)}</td><td>${g.share ? '+' + usd(g.share) : '–'}</td><td class=pay><b>${usd(g.now)}</b>${g.to > g.from ? ' each' : ''}${bar(g)}</td></tr>`,
   );
   return `<tr><th>Place</th><th>Reward</th><th>Fee share</th><th>Pays now</th></tr>${rows.join('')}
 <tr class=sum><td>${plural(b.rewards.length, 'place', 'places')}</td><td>${usd(b.reward)}</td><td>${+b.fees ? '+' + usd(b.fees) : '–'}</td><td><b>${usd(b.pot)}</b> pot</td></tr>`;
@@ -349,14 +355,15 @@ function rewardsTable(b) {
 
 function datesList(b) {
   const rows = [['Status', `<span class="pill ${statusOf(b)[0]}">${statusOf(b)[1]}</span>`]];
-  if (b.opens) rows.push(['Opened', when(b.opens)]);
+  // The phase line above the list states each phase's dates; without one, the opening date keeps its row.
+  const line = phaseLine(b);
+  if (b.opens && !line) rows.push(['Opened', when(b.opens)]);
   rows.push(['Deadline', `${when(b.deadline)} · <span data-until="${esc(b.deadline)}">${timeLeft(b.deadline)}</span>`]);
-  for (const p of b.phases || []) rows.push([esc(p.title),`${hour(p.starts)} → ${when(p.ends)}${p.finalized ? ' · finalized' : ''}`]);
   if (b.resolved) rows.push(['Results', when(b.resolved)]);
   if (b.winner) rows.push(['Winner', `<a href="#/u/${encodeURIComponent(b.winner)}">@${esc(b.winner)}</a>`]);
   if (b.metric) rows.push(['Ranked by', esc(b.metric)]);
   if (b.published) rows.push(['Published', when(b.published)]);
-  return rows.map(([name, value]) => `<dt>${name}</dt><dd>${value}</dd>`).join('');
+  return line + rows.map(([name, value]) => `<dt>${name}</dt><dd>${value}</dd>`).join('');
 }
 
 document.head.append(
@@ -386,6 +393,11 @@ button{font:inherit;font-size:12px;padding:3px 10px;border:1px solid #c5ccd8;bor
 .cols{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:0 18px}
 table{width:100%;border-spacing:0}th,td{padding:5px 12px;text-align:right;white-space:nowrap;border-top:1px solid #e4e8ee}tr:first-child th{border:0}th{font-size:12px;color:#566074}th:first-child,td:first-child{text-align:left}.sum td{background:#f3f5f8;font-weight:600}
 dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:0;padding:9px 12px;font-size:14px}dt{color:#566074}dd{margin:0;font-weight:600}
+.pay{padding-bottom:2px}.pay u{display:block;height:3px;margin-left:auto;border-radius:2px;background:#08692f;opacity:.38}
+.phline{grid-column:1/-1;display:flex;gap:4px;padding:16px 0 2px;font-size:12px;color:#566074}.ph{flex:1;min-width:0}.ph b{color:#10151f}
+.ph u{display:block;position:relative;height:6px;margin-bottom:4px;border-radius:3px;background:#e2e6ed}.ph s{display:block;height:100%;border-radius:3px;background:#08692f}
+.ph em{position:absolute;top:-16px;transform:translateX(-50%);padding:0 4px;border-radius:3px;background:#10151f;color:#fff;font-style:normal;font-size:9.5px;font-weight:800;line-height:13px;letter-spacing:.05em;text-transform:uppercase}.ph em:after{content:"";position:absolute;left:50%;top:13px;width:2px;height:11px;margin-left:-1px;background:#10151f}
+.ph span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ph span+span{font-size:11.5px;font-variant-numeric:tabular-nums}
 .md{padding:2px 14px;overflow-wrap:anywhere}.md h3{font-size:15px;margin:14px 0 6px}.md p,.md ul,.md ol{margin:8px 0}.md code{padding:1px 4px;border-radius:4px;background:#eef1f5;font-size:13px}
 details{margin:14px 0 30px}summary{padding:8px 2px;font-weight:650;cursor:pointer}
 .av{position:relative;display:inline-grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%;background:#d5dae2;color:#39425a;font-size:13px;font-weight:700;overflow:hidden}.av i{font-style:normal}.av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -402,7 +414,7 @@ details{margin:14px 0 30px}summary{padding:8px 2px;font-weight:650;cursor:pointe
 .top5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0;padding:0;list-style:none}.top5+p{min-height:63px;margin:0;color:#465064}
 .top5 li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 7px;align-items:baseline;padding:7px 8px 7px 9px;background:#fff;border:1px solid #d5dae2;border-radius:10px}
 .top5 i{grid-area:2/1;font-style:normal;font-size:13px;font-weight:700;color:#566074}.top5 a{grid-area:1/1/2/3;font-size:13px;line-height:22px;font-weight:650;color:#10151f;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.top5 a:hover{text-decoration:underline}.top5 .long{font-size:11.5px;letter-spacing:-.25px}.top5 b{grid-area:2/2;font-size:17px}
-@media(max-width:820px){body{grid-template-rows:auto minmax(0,1fr)}header{flex-wrap:wrap;row-gap:0;padding-block:6px}#net{flex-basis:100%;overflow:hidden;text-overflow:ellipsis;font-size:10.5px}.top5{grid-template-columns:minmax(0,1fr);gap:4px}.top5 li{grid-template-columns:30px minmax(0,1fr) auto;padding:5px 12px}.top5 i,.top5 a,.top5 b{grid-area:auto}.top5 a,.top5 .long{font-size:15px;letter-spacing:0}.toph a{font-size:12px}.back{display:inline-block}.stats{grid-template-columns:1fr 1fr}.cols{grid-template-columns:minmax(0,1fr)}h1{font-size:21px}.stat b{font-size:20px}th,td{padding:5px 8px}}`,
+@media(max-width:820px){body{grid-template-rows:auto minmax(0,1fr)}header{flex-wrap:wrap;row-gap:0;padding-block:6px}#net{flex-basis:100%;overflow:hidden;text-overflow:ellipsis;font-size:10.5px}.top5{grid-template-columns:minmax(0,1fr);gap:4px}.top5 li{grid-template-columns:30px minmax(0,1fr) auto;padding:5px 12px}.top5 i,.top5 a,.top5 b{grid-area:auto}.top5 a,.top5 .long{font-size:15px;letter-spacing:0}.toph a{font-size:12px}.back{display:inline-block}.stats{grid-template-columns:1fr 1fr}.cols{grid-template-columns:minmax(0,1fr)}h1{font-size:21px}.stat b{font-size:20px}th,td{padding:5px 8px}.ph span{white-space:normal}}`,
   }),
 );
 
@@ -525,4 +537,33 @@ function keepLaterNumbers(row) {
   ownNumbers.delete(row.slug);
   const page = $('bounty');
   if (!page.hidden && page._bounty && page._bounty !== row && page._bounty.slug === row.slug) paintBounty({ ...page._bounty, ...sharedNumbers(row) });
+}
+
+// ---------------------------------------------------------------- a bounty's phase line
+
+/**
+ * The bounty's phases as one track, in the API's order and with its dates: each phase is a segment filled by the
+ * share of it that has elapsed, and a "now" marker stands where the current time falls between that phase's start
+ * and end. Each segment also says its state in words. Past the last end the track is full and has no marker.
+ */
+function phaseLine(b) {
+  const now = Date.now();
+  const phases = (b.phases || []).filter((p) => Date.parse(p.ends) > Date.parse(p.starts));
+  if (!phases.length) return '';
+  // The marker stands in the last phase to have started (at its end, between two phases), or at the very start.
+  let current = 0;
+  phases.forEach((p, i) => now >= Date.parse(p.starts) && (current = i));
+  const over = now >= Date.parse(phases[phases.length - 1].ends);
+  // Where a narrow screen wraps the labels, a state or a date stays in one piece.
+  const tied = (text) => text.replace(/ /g, '&nbsp;');
+  const cells = phases.map((p, i) => {
+    const from = Date.parse(p.starts);
+    const part = Math.min(1, Math.max(0, (now - from) / (Date.parse(p.ends) - from)));
+    const share = (part * 100).toFixed(1);
+    const state = p.finalized ? 'finalized' : part >= 1 ? 'complete' : part > 0 ? Math.floor(part * 100) + '% elapsed' : 'starts in ' + closesIn(p.starts);
+    const text = `${esc(p.title)} · ${state}`;
+    const mark = !over && i === current ? `<em style="left:${share}%">now</em>` : '';
+    return `<div class=ph title="${text}: ${hour(p.starts)} → ${when(p.ends)}"><u><s style="width:${share}%"></s>${mark}</u><span><b>${esc(p.title)}</b> ·&nbsp;${tied(state)}</span><span>${tied(hour(p.starts))}&nbsp;→ ${tied(hour(p.ends))}</span></div>`;
+  });
+  return `<div class=phline>${cells.join('')}</div>`;
 }
